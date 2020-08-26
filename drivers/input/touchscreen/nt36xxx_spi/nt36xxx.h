@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/input.h>
 #include <linux/of.h>
+#include <linux/pm_qos.h>
 #include <linux/spi/spi.h>
 #include <linux/uaccess.h>
 #include <linux/regulator/consumer.h>
@@ -206,6 +207,7 @@ struct nvt_ts_data {
 
 	struct pm_qos_request pm_spi_req;
 	struct pm_qos_request pm_touch_req;
+	struct pm_qos_request pm_qos_req;
 /*2019.12.16 longcheer taocheng add (xiaomi game mode) start*/
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 	u8 palm_sensor_switch;
