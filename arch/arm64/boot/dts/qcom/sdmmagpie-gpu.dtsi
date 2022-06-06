@@ -516,7 +516,6 @@
 				qcom,initial-pwrlevel = <7>;
 				qcom,ca-target-pwrlevel = <4>;
 
-				/* TURBO */
 				qcom,gpu-pwrlevel@0 {
 					reg = <0>;
 					qcom,gpu-freq = <800000000>;
@@ -528,7 +527,7 @@
 				/* NOM_L1 */
 				qcom,gpu-pwrlevel@1 {
 					reg = <1>;
-					qcom,gpu-freq = <720000000>;
+					qcom,gpu-freq = <760000000>;
 					qcom,bus-freq = <11>;
 					qcom,bus-min = <11>;
 					qcom,bus-max = <11>;
