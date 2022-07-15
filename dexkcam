@@ -1,0 +1,157 @@
+#!/bin/bash
+#
+# Compile script for Deluxe Kernel (DEXK)
+# Copyright (C)2022 Ardany Jolón
+CHAT_TEST="-1001333127240" # Chatid
+CHAT_PRIVATE="612904957"
+CHAT_POST="-1001533935187"
+API=5352564979:AAGAt-pS7aZmu42hg3ie3GaVts8iLDv_Z50 # API bot token
+IMAGE="https://telegra.ph/file/024fe1bf37d5dcc6f4ae7.jpg"
+#IMAGE=$(find -name *.jpg | sort -n | tail -1)
+SECONDS=0 # builtin bash timer
+KERNEL_PATH=$PWD
+TC_DIR="$HOME/tc/clang-16"
+GCC_64_DIR="$HOME/tc/aarch64-linux-android-4.9"
+GCC_32_DIR="$HOME/tc/arm-linux-androideabi-4.9"
+AK3_DIR="$HOME/tc/AnyKernel3"
+DEFCONFIG="vendor/surya-perf_defconfig"
+export PATH="$TC_DIR/bin:$PATH"
+
+if [[ $1 = "-m" || $1 = "--menu" ]]; then
+        make O=out ARCH=arm64 menuconfig
+	make O=out ARCH=arm64 $DEFCONFIG savedefconfig
+        cp out/defconfig arch/arm64/configs/$DEFCONFIG
+        echo -e "\nSuccessfully regenerated defconfig at $DEFCONFIG"
+        exit
+fi
+
+if [[ $1 = "-r" || $1 = "--regen" ]]; then
+	make O=out ARCH=arm64 $DEFCONFIG savedefconfig
+	cp out/defconfig arch/arm64/configs/$DEFCONFIG
+	echo -e "\nSuccessfully regenerated defconfig at $DEFCONFIG"
+	exit
+fi
+
+if [[ $1 = "-c" || $1 = "--clean" ]]; then
+	rm -rf out
+fi
+
+mkdir -p out
+make O=out ARCH=arm64 $DEFCONFIG
+
+echo -e ""
+echo -e ""
+echo -e "************************"
+echo -e "\nStarting compilation...\n"
+echo -e "************************"
+echo -e ""
+echo -e ""
+
+make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld AS=llvm-as AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip CROSS_COMPILE=$GCC_64_DIR/bin/aarch64-linux-android- CROSS_COMPILE_ARM32=$GCC_32_DIR/bin/arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- Image.gz dtbo.img | tee log.txt
+
+kernel="out/arch/arm64/boot/Image.gz"
+dtb="out/arch/arm64/boot/dts/qcom/sdmmagpie.dtb"
+dtbo="out/arch/arm64/boot/dtbo.img"
+
+if [ -f "$kernel" ] && [ -f "$dtb" ] && [ -f "$dtbo" ]; then
+        rm *.zip 2>/dev/null
+	# Set kernel name and version
+	KERNELVERSION="$(cat $KERNEL_PATH/Makefile | grep VERSION | head -n 1 | sed "s|.*=||1" | sed "s| ||g")"
+	KERNELPATCHLEVEL="$(cat $KERNEL_PATH/Makefile | grep PATCHLEVEL | head -n 1 | sed "s|.*=||1" | sed "s| ||g")"
+	KERNELSUBLEVEL="$(cat $KERNEL_PATH/Makefile | grep SUBLEVEL | head -n 1 | sed "s|.*=||1" | sed "s| ||g")"
+        REVISION=v$KERNELVERSION.$KERNELPATCHLEVEL.$KERNELSUBLEVEL
+if [[ $2 = "-12" || $2 = "--snow" ]]; then
+        ZIPNAME="A12_"$REVISION"-DEXK-POCO_X3-$(date '+%Y%m%d-%H%M').zip"
+fi
+if [[ $2 = "-13" || $2 = "--tiramisu" ]]; then
+        ZIPNAME="A13_"$REVISION"-DEXK-POCO_X3-$(date '+%Y%m%d-%H%M').zip"
+fi
+#        ZIPNAME=""$REVISION"-DEXK-POCO_X3-$(date '+%Y%m%d-%H%M').zip"
+        echo -e ""
+        echo -e ""
+	echo -e "********************************************"
+	echo -e "\nKernel compiled succesfully! Zipping up...\n"
+        echo -e "********************************************"
+        echo -e ""
+	echo -e ""
+	if [ -d "$AK3_DIR" ]; then
+		cp -r $AK3_DIR AnyKernel3
+	elif ! git clone -q https://github.com/Ardjlon/AnyKernel3 -b surya; then
+		echo -e "\nAnyKernel3 repo not found locally and couldn't clone from GitHub! Aborting..."
+	fi
+	cp $kernel $dtbo AnyKernel3
+	cp $dtb AnyKernel3/dtb
+	rm -rf out/arch/arm64/boot
+	cd AnyKernel3
+	git checkout surya &> /dev/null
+	zip -r9 "../$ZIPNAME" * -x .git README.md *placeholder
+	cd ..
+	rm -rf AnyKernel3
+
+if [[ $1 = "-p" || $1 = "--private" ]]; then
+                curl -F chat_id="$CHAT_PRIVATE" \
+                        -F caption="$REVISION" \
+                        -F document=@"$ZIPNAME" \
+                        https://api.telegram.org/bot"$API"/sendDocument
+fi
+
+if [[ $1 = "-t" || $1 = "--test" ]]; then
+		curl -F chat_id="$CHAT_TEST" \
+			-F caption="Test for camera in A12, A13 is fully working" \
+			-F document=@"$ZIPNAME" \
+			https://api.telegram.org/bot"$API"/sendDocument
+fi
+
+if [[ $1 = "-s" || $1 = "--share" ]]; then
+sshpass -p "sourcedany0" scp $ZIPNAME ardjlon@frs.sourceforge.net:/home/frs/project/builds-ardjlon/surya/kernels/
+
+	curl -F chat_id="$CHAT_PRIVATE" \
+                -F "parse_mode=Markdown" \
+		-F caption="
+*Deluxe Kernel Hotfix*
+*By:* @Ardjlon *|* [DONATE](https://www.paypal.me/Ardjlon)
+
+*Version:* $REVISION
+*Build date:* "$(date '+%Y-%m-%d')"
+*Support:* A11-A13 OSS
+
+[Download](https://www.pling.com/p/1751205/) *(Use the pling \"link\" for keep support please)*
+[Support group](https://t.me/ardjlonsupport)
+
+*Changelog:*
+*- Merge CAF tag LA.UM.9.1.r1-12600.01-SMxxx0.QSSI13.0*
+*- Fix record video issues*
+- Merge CAF tag LA.UM.9.1.r1-12600-SMxxx0.0
+- Merge v4.14.295 linux-stable branch
+- Fix video lag issues
+- Fix missing audio issue (A13)
+- Added support for DT2W (For ROMS with kenny trees)
+
+*Credits:*
+- Thanks to testers: @pasqualecannone, @masxivip, & @Frank\_Poco
+- Thanks to: @EdrickAC, @cukimayx & @SebaCornejo for extra tests
+
+#DEXK #Deluxe #Kernel #OSS #A11 #A12 #A13
+		" \
+		-F photo="$IMAGE" \
+		https://api.telegram.org/bot"$API"/sendPhoto
+fi
+        echo -e ""
+        echo -e ""
+        echo -e "************************************************************"
+        echo -e "**                                                        **"
+        echo -e "**   File name: $ZIPNAME   **"
+        echo -e "**   Build completed in $((SECONDS / 60)) minute(s) and $((SECONDS % 60)) second(s)!    **"
+        echo -e "**                                                        **"
+        echo -e "************************************************************"
+        echo -e ""
+        echo -e ""
+
+#	[ -x "$(command -v gdrive)" ] && gdrive upload --share "$ZIPNAME"
+else
+        echo -e "*****************************"
+        echo -e "**                         **"
+	echo -e "**   Compilation failed!   **"
+        echo -e "**                         **"
+        echo -e "*****************************"
+fi
