@@ -38,7 +38,6 @@ module_param(kp_mode, int, 0664);
 
 DEFINE_MUTEX(kplock);
 
-extern bool lyb_sultan_pid;
 /*
 * This function can be used to change profile to any given mode 
 * for a specific period of time during any in-kernel event,
@@ -108,8 +107,6 @@ int kp_active_mode(void)
 #ifdef CONFIG_AUTO_KPROFILES
 	if (!screen_on && auto_kprofiles)
 		return 1;
-	if (lyb_sultan_pid && auto_kprofiles)
-		return 3;
 #endif
 
 	if (kp_override)
