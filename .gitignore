@@ -129,5 +129,5 @@ kernel/configs/android-*.cfg
 # kernel builds
 *.zip
 out/
-dexk
+tc/
 log.txt
