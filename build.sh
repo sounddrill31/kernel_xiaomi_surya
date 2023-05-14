@@ -39,7 +39,9 @@ if [[ $1 = "-rf" || $1 = "--regen-full" ]]; then
 fi
 
 if [[ $1 = "-c" || $1 = "--clean" ]]; then
-	rm -rf out
+    make clean
+    make mrproper
+    rm -rf out
 fi
 
 mkdir -p out
