@@ -196,6 +196,38 @@ static void nvt_irq_enable(bool enable)
 	NVT_LOG("enable=%d, desc->depth=%d\n", enable, desc->depth);
 }
 
+static inline ssize_t single_tap_pressed_get(struct device *dev,
+		               struct device_attribute *attribute,
+			       char *buffer)
+{
+       struct nvt_ts_data *ts = dev_get_drvdata(dev);
+       return scnprintf(buffer, PAGE_SIZE, "%i\n", ts->single_tap_pressed);
+}
+
+static DEVICE_ATTR(single_tap_pressed, S_IRUGO,
+		   single_tap_pressed_get, NULL);
+
+static struct attribute *nvt_ts_attrs[] = {
+        &dev_attr_single_tap_pressed.attr,
+        NULL,
+};
+
+static struct attribute_group nvt_ts_group = {
+    .attrs = nvt_ts_attrs,
+};
+
+static int nvt_ts_create_gesture_sysfs(struct device *dev)
+{
+    int ret = 0;
+    ret = sysfs_create_group(&dev->kobj, &nvt_ts_gesture_group);
+    if (ret) {
+        FTS_ERROR("gesture sys node create fail");
+        sysfs_remove_group(&dev->kobj, &nvt_ts_gesture_group);
+        return ret;
+    }
+    return 0;
+}
+
 /*******************************************************
 Description:
 	Novatek touchscreen spi read/write core function.
@@ -962,6 +994,9 @@ void nvt_ts_wakeup_gesture_report(uint8_t gesture_id, uint8_t *data)
 	}
 
 	NVT_LOG("gesture_id = %d\n", gesture_id);
+
+    nvt_ts_data->single_tap_pressed = (event[2] == GEST_ID_SINGTAP) ? 1 : 0;
+	sysfs_notify(&nvt_ts_data->client->dev.kobj, NULL, "single_tap_pressed");
 
 	switch (gesture_id) {
 	case GESTURE_WORD_C:
