@@ -784,6 +784,18 @@ static int smb5_parse_dt(struct smb5 *chip)
 	if (!rc && tmp < DCIN_ICL_MAX_UA)
 		chg->wls_icl_ua = tmp;
 
+	if (chg->six_pin_step_charge_enable) {
+		rc = smb5_charge_step_charge_init(chg, node);
+		if (!rc) {
+			for (i = 0; i < MAX_STEP_ENTRIES; i++)
+				pr_err("lct six-pin-step-chg-cfg: %duV, %duA,six-pin-step-chg-cfg_2: %duV, %duA\n",
+						chg->six_pin_step_cfg[i].vfloat_step_uv,
+						chg->six_pin_step_cfg[i].fcc_step_ua,
+						chg->six_pin_step_cfg_2[i].vfloat_step_uv,
+						chg->six_pin_step_cfg_2[i].fcc_step_ua);
+		}
+	}
+
 	chg->aicl_disable = of_property_read_bool(node, "qcom,aicl-disable");
 
 	chg->dcin_uusb_over_gpio_en = of_property_read_bool(node,
@@ -886,19 +898,6 @@ static int smb5_parse_dt(struct smb5 *chip)
 			if (rc)
 				pr_err("Unable to set dir for usb_hub_33v_en gpio\n");
 		}
-	}
-
-	if (chg->six_pin_step_charge_enable) {
-		rc = smb5_charge_step_charge_init(chg, node);
-		if (!rc) {
-			for (i = 0; i < MAX_STEP_ENTRIES; i++)
-				pr_err("lct six-pin-step-chg-cfg: %duV, %duA,six-pin-step-chg-cfg_2: %duV, %duA\n",
-						chg->six_pin_step_cfg[i].vfloat_step_uv,
-						chg->six_pin_step_cfg[i].fcc_step_ua,
-						chg->six_pin_step_cfg_2[i].vfloat_step_uv,
-						chg->six_pin_step_cfg_2[i].fcc_step_ua);
-		}
-
 	}
 
 	return 0;
@@ -1035,7 +1034,7 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 		val->intval = get_client_vote(chg->usb_icl_votable, PD_VOTER);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		rc = smblib_get_prop_input_current_max(chg, val);
+		val->intval = get_effective_result(chg->usb_icl_votable);
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		val->intval = POWER_SUPPLY_TYPE_USB_PD;
@@ -1564,6 +1563,10 @@ static int smb5_usb_main_get_prop(struct power_supply *psy,
 		break;
 	/* Use this property to report SMB health */
 	case POWER_SUPPLY_PROP_HEALTH:
+		if (chg->use_bq_pump) {
+			rc = val->intval = -ENODATA;
+			break;
+		}
 		rc = val->intval = smblib_get_prop_smb_health(chg);
 		break;
 	/* Use this property to report overheat status */
@@ -1576,7 +1579,7 @@ static int smb5_usb_main_get_prop(struct power_supply *psy,
 		break;
 	}
 	if (rc < 0)
-		pr_err("Couldn't get prop %d rc = %d\n", psp, rc);
+		pr_debug("Couldn't get prop %d rc = %d\n", psp, rc);
 
 	return rc;
 }
@@ -1896,7 +1899,6 @@ static enum power_supply_property smb5_batt_props[] = {
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_RECHARGE_SOC,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
-	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_FORCE_RECHARGE,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
@@ -2086,7 +2088,6 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 		rc = smblib_get_prop_batt_awake(chg, val);
 		break;
 	default:
-		pr_err("batt power supply prop %d not supported\n", psp);
 		return -EINVAL;
 	}
 
@@ -2240,7 +2241,7 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 		if(val->intval == 0)
 			break;
 		chg->reverse_charge_mode = val->intval;
-		pr_err("longcheer,%s,reverse_charge_mode=%d,reverse_state=%d\n",
+		pr_debug("longcheer,%s,reverse_charge_mode=%d,reverse_state=%d\n",
 			__func__,chg->reverse_charge_mode,chg->reverse_charge_state);
 		if(chg->reverse_charge_mode != chg->reverse_charge_state){
 			chg->reverse_charge_state = chg->reverse_charge_mode;
@@ -3089,9 +3090,8 @@ static int smb5_init_hw(struct smb5 *chip)
 	 */
 	if (chg->chg_param.smb_version == PMI632_SUBTYPE) {
 		schgm_flash_init(chg);
+		smblib_rerun_apsd_if_required(chg);
 	}
-
-	smblib_rerun_apsd_if_required(chg);
 
 	/* Use ICL results from HW */
 	rc = smblib_icl_override(chg, HW_AUTO_MODE);
@@ -3969,17 +3969,14 @@ static int thermal_notifier_callback(struct notifier_block *noti, unsigned long 
 	struct fb_event *ev_data = data;
 	struct smb_charger *chg = container_of(noti, struct smb_charger, notifier);
 	int *blank;
-	printk("%s %d",__FUNCTION__,__LINE__);
 	if (ev_data && ev_data->data && chg) {
 		blank = ev_data->data;
 		if (event == MSM_DRM_EARLY_EVENT_BLANK && *blank == MSM_DRM_BLANK_UNBLANK) {
 			lct_backlight_off = false;
-			pr_info("thermal_notifier lct_backlight_off:%d",lct_backlight_off);
 			schedule_work(&chg->fb_notify_work);
 		}
 		else if (event == MSM_DRM_EVENT_BLANK && *blank == MSM_DRM_BLANK_POWERDOWN) {
 			lct_backlight_off = true;
-			pr_info("thermal_notifier lct_backlight_off:%d",lct_backlight_off);
 			schedule_work(&chg->fb_notify_work);
 		}
 	}
@@ -4051,7 +4048,7 @@ static void step_otg_chg_work(struct work_struct *work)
 	}
 
 	temp = prop.intval;
-	pr_err("longcheer ,%s:temp=%d\n",__func__,temp);
+	pr_debug("longcheer ,%s:temp=%d\n",__func__,temp);
 
 	otg_chg_current_temp = lct_get_otg_chg_current(temp);
 
@@ -4059,7 +4056,7 @@ static void step_otg_chg_work(struct work_struct *work)
 		goto exit_work;
 	else
 		chg->otg_chg_current = otg_chg_current_temp;
-	pr_err("longcheer ,%s:otg_chg_current=%d\n",__func__,chg->otg_chg_current);
+	pr_debug("longcheer ,%s:otg_chg_current=%d\n",__func__,chg->otg_chg_current);
 
 	rerun_reverse_check(chg);
 
@@ -4076,7 +4073,7 @@ static int step_otg_chg_notifier_call(struct notifier_block *nb,
 
 	if (event != PSY_EVENT_PROP_CHANGED)
 		return NOTIFY_OK;
-	pr_err("longcheer ,%s:reverse_charge_state=%d\n",__func__,chg->reverse_charge_state);
+	pr_debug("longcheer ,%s:reverse_charge_state=%d\n",__func__,chg->reverse_charge_state);
 	if(!chg->reverse_charge_state)
 		return NOTIFY_OK;
 

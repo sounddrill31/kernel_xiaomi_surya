@@ -96,7 +96,6 @@ enum print_reason {
 #define FCC_MAX_QC3P5_VOTER            "FCC_MAX_QC3P5_VOTER"
 #define DCIN_AICL_VOTER			"DCIN_AICL_VOTER"
 #define OVERHEAT_LIMIT_VOTER		"OVERHEAT_LIMIT_VOTER"
-#define GPIO_DCIN_VOTER			"GPIO_DCIN_VOTER"
 #define PD_VERIFED_VOTER		"PD_VERIFED_VOTER"
 /* used for bq charge pump solution */
 #define MAIN_CHG_VOTER			"MAIN_CHG_VOTER"
@@ -107,6 +106,7 @@ enum print_reason {
 #define CC_UN_COMPLIANT_VOTER		"CC_UN_COMPLIANT_VOTER"
 
 #define JEITA_VOTER                     "JEITA_VOTER"
+#define GPIO_DCIN_VOTER			"GPIO_DCIN_VOTER"
 
 #define BOOST_BACK_STORM_COUNT	3
 #define WEAK_CHG_STORM_COUNT	8
@@ -589,11 +589,11 @@ struct smb_charger {
 	struct delayed_work	pr_swap_detach_work;
 	struct delayed_work	reg_work;
 	struct delayed_work	pr_lock_clear_work;
-	struct delayed_work	micro_usb_switch_work;
 	struct delayed_work	reduce_fcc_work;
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
 	struct delayed_work     charger_soc_decimal;
 #endif
+	struct delayed_work	micro_usb_switch_work;
 
 	struct alarm		lpd_recheck_timer;
 	struct alarm		moisture_protection_alarm;
@@ -777,16 +777,6 @@ struct smb_charger {
 	int			dcin_uv_count;
 	ktime_t			dcin_uv_last_time;
 	int			last_wls_vout;
-	/* GPIO DCIN Supply */
-	int			micro_usb_gpio;
-	int			micro_usb_irq;
-	int			dc_9v_gpio;
-	int			dc_9v_irq;
-	int			usb_switch_gpio;
-	int			usb_hub_33v_en_gpio;
-	int			micro_usb_pre_state;
-	bool			dcin_uusb_over_gpio_en;
-	bool			aicl_disable;
 	struct notifier_block notifier;
 	struct work_struct fb_notify_work;
 	bool			already_start_step_charge_work;
@@ -804,6 +794,16 @@ struct smb_charger {
 #endif
 	bool   is_float_recheck;
 	int   disable_suspend_on_collapse;
+        /* GPIO DCIN Supply */
+        int                     micro_usb_gpio;
+        int                     micro_usb_irq;
+        int                     dc_9v_gpio;
+        int                     dc_9v_irq;
+        int                     usb_switch_gpio;
+        int                     usb_hub_33v_en_gpio;
+        int                     micro_usb_pre_state;
+        bool                    dcin_uusb_over_gpio_en;
+        bool                    aicl_disable;
 };
 enum quick_charge_type {
 	QUICK_CHARGE_NORMAL = 0,
@@ -963,8 +963,6 @@ int smblib_get_prop_charger_temp(struct smb_charger *chg,
 int smblib_get_prop_die_health(struct smb_charger *chg);
 int smblib_get_prop_smb_health(struct smb_charger *chg);
 int smblib_get_prop_connector_health(struct smb_charger *chg);
-int smblib_get_prop_input_current_max(struct smb_charger *chg,
-				  union power_supply_propval *val);
 int smblib_set_prop_thermal_overheat(struct smb_charger *chg,
 			       int therm_overheat);
 int smblib_get_skin_temp_status(struct smb_charger *chg);
